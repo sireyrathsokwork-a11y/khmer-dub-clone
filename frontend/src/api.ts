@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE_URL = 'http://localhost:3001'
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 export async function startDubbing(youtubeUrl: string) {
     const response = await axios.post(`${BASE_URL}/api/dub/process`, {
@@ -21,9 +21,7 @@ export function subscribeToJob(
     jobId: number,
     onUpdate: (data: any) => void
   ) {
-    const eventSource = new EventSource(
-      `http://localhost:3001/api/dub/status/${jobId}`
-    )
+    const eventSource = new EventSource(`${BASE_URL}/api/dub/status/${jobId}`)
   
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)

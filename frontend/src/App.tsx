@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { type AppState } from './types';
 import Hero from './components/Hero';
 import ProgressBar from './components/ProgressBar';
@@ -48,7 +48,7 @@ export default function App() {
             ...prev,
             job: prev.job ? { ...prev.job, status: 'completed' } : null,
             transcript: update.transcript,
-            videoUrl: `http://localhost:3001/api/dub/video/${jobId}`,
+            videoUrl: `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/dub/video/${jobId}`,
           }));
         } else if (update.status === 'error') {
           setState((prev) => ({
@@ -71,10 +71,6 @@ export default function App() {
       }));
     }
   }
-
-  useEffect(() => {``
-    console.log('setate----------', state);
-  }, [setState, state]);
 
   function handleKhmerChange(text: string) {
     setState((prev) => ({
