@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+export const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 export async function startDubbing(youtubeUrl: string) {
     const response = await axios.post(`${BASE_URL}/api/dub/process`, {
@@ -9,10 +9,10 @@ export async function startDubbing(youtubeUrl: string) {
     return response.data
 }
 
-export async function regenerateAudio(jobId: number, khmerText: string) {
+export async function regenerateAudio(jobId: number, khmerText: string ) {
     const response = await axios.post(`${BASE_URL}/api/dub/regenerate`, {
         jobId,
-        khmerText
+        khmerText,
     })
     return response.data
 }

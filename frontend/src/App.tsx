@@ -5,7 +5,7 @@ import ProgressBar from './components/ProgressBar';
 import TranscriptEditor from './components/TranscriptEditor';
 import VideoEditor from './components/VideoEditor';
 import DownloadButton from './components/DownloadButton';
-import { startDubbing, subscribeToJob } from './api';
+import { regenerateAudio, startDubbing, subscribeToJob, BASE_URL } from './api';
 
 const initialState: AppState = {
   job: null,
@@ -22,6 +22,40 @@ export default function App() {
     !!state.job &&
     state.job.status !== 'completed' &&
     state.job.status !== 'error';
+
+  function handleJobUpdates(jobId: number, onDone?: () => void) {
+    subscribeToJob(jobId, (update) => {
+      if (update.status === 'completed') {
+        setState((prev) => ({
+          ...prev,
+          job: prev.job ? { ...prev.job, status: 'completed' } : null,
+          transcript: {
+            english:
+              update.transcript?.english || prev.transcript?.english || '',
+            khmer:
+              update.transcript?.khmer ||
+              update.khmer ||
+              prev.transcript?.khmer ||
+              '',
+          },
+          videoUrl: `${BASE_URL}/api/dub/video/${jobId}?t=${Date.now()}`,
+        }));
+        onDone?.();
+      } else if (update.status === 'error') {
+        setState((prev) => ({
+          ...prev,
+          error: update.message,
+          job: prev.job ? { ...prev.job, status: 'error' } : null,
+        }));
+        onDone?.();
+      } else {
+        setState((prev) => ({
+          ...prev,
+          job: prev.job ? { ...prev.job, status: update.status } : null,
+        }));
+      }
+    });
+  }
 
   async function handleDubStart(youtubeUrl: string) {
     setState((prev) => ({
@@ -41,28 +75,7 @@ export default function App() {
         job: prev.job ? { ...prev.job, jobId } : null,
       }));
 
-      // Subscribe to real-time updates
-      subscribeToJob(jobId, (update) => {
-        if (update.status === 'completed') {
-          setState((prev) => ({
-            ...prev,
-            job: prev.job ? { ...prev.job, status: 'completed' } : null,
-            transcript: update.transcript,
-            videoUrl: `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/dub/video/${jobId}`,
-          }));
-        } else if (update.status === 'error') {
-          setState((prev) => ({
-            ...prev,
-            error: update.message,
-            job: prev.job ? { ...prev.job, status: 'error' } : null,
-          }));
-        } else {
-          setState((prev) => ({
-            ...prev,
-            job: prev.job ? { ...prev.job, status: update.status } : null,
-          }));
-        }
-      });
+      handleJobUpdates(jobId);
     } catch (err) {
       setState((prev) => ({
         ...prev,
@@ -82,14 +95,17 @@ export default function App() {
   async function handleRegenerate() {
     if (!state.job || !state.transcript) return;
     setIsRegenerating(true);
+
+    // Subscribe BEFORE calling regenerate — don't miss any events
+    handleJobUpdates(state.job.jobId, () => setIsRegenerating(false));
+
     try {
-      // regenerate endpoint coming soon
-      console.log('Regenerating with:', state.transcript.khmer);
-    } finally {
+      await regenerateAudio(state.job.jobId, state.transcript.khmer);
+    } catch (err) {
+      console.error('Regenerate error:', err);
       setIsRegenerating(false);
     }
   }
-
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <Hero onSubmit={handleDubStart} isProcessing={isProcessing} />

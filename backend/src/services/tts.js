@@ -61,14 +61,16 @@ async function mergeAudioChunks(chunkPaths, outputPath) {
   })
 }
 
-async function textToSpeechKhmer(khmerText, jobId) {
+async function textToSpeechKhmer(khmerText, jobId, isRegenerated = false) {
   console.log('Sending Khmer text to Google TTS...')
 
   const chunks = chunkText(khmerText)
   console.log(`Split into ${chunks.length} chunks`)
 
+  const suffix = isRegenerated ? `_khmer_${Date.now()}` : `_khmer`
+
   if (chunks.length === 1) {
-    const outputPath = path.join(__dirname, '../../temp', `${jobId}_khmer.mp3`)
+    const outputPath = path.join(__dirname, '../../temp', `${jobId}${suffix}.mp3`)
     await synthesizeChunk(chunks[0], outputPath)
     console.log('Khmer audio generated.')
     return outputPath
@@ -77,18 +79,16 @@ async function textToSpeechKhmer(khmerText, jobId) {
   // Generate audio for each chunk
   const chunkPaths = []
   for (let i = 0; i < chunks.length; i++) {
-    const chunkPath = path.join(__dirname, '../../temp', `${jobId}_chunk_${i}.mp3`)
+    const chunkPath = path.join(__dirname, '../../temp', `${jobId}${suffix}_chunk_${i}.mp3`)
     await synthesizeChunk(chunks[i], chunkPath)
     chunkPaths.push(chunkPath)
     console.log(`Chunk ${i + 1}/${chunks.length} done`)
   }
 
-  // Merge all chunks into one file
-  const outputPath = path.join(__dirname, '../../temp', `${jobId}_khmer.mp3`)
+  const outputPath = path.join(__dirname, '../../temp', `${jobId}${suffix}.mp3`)
   await mergeAudioChunks(chunkPaths, outputPath)
 
   console.log('Khmer audio generated:', outputPath)
   return outputPath
 }
-
 module.exports = { textToSpeechKhmer }
