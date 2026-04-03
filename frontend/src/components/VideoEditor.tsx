@@ -27,7 +27,7 @@ export default function VideoEditor({ videoUrl, duration }: VideoEditorProps) {
           className="max-w-xl  rounded-lg border border-gray-800 bg-black"
         />
 
-        // TODO 
+        {/* // TODO  */}
         {/* <div className="mt-6 space-y-4">
           <div>
             <div className="mb-1 flex justify-between text-xs text-gray-400">
