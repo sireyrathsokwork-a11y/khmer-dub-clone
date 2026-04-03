@@ -24,9 +24,11 @@ const EXAMPLES = [
 
 export default function Hero({ onSubmit, isProcessing }: HeroProps) {
   const [url, setUrl] = useState('');
+  const [isDubbed, setIsDubbed] = useState(false);
 
   const handleSubmit = () => {
     if (!url.trim()) return;
+    setIsDubbed(true);
     onSubmit(url.trim());
   };
 
@@ -98,7 +100,7 @@ export default function Hero({ onSubmit, isProcessing }: HeroProps) {
       </div>
 
       {/* What fits in 3 minutes */}
-      {url.length === 0 && (
+      {!isDubbed && (
         <div>
           {/* Divider */}
           <div className="my-10 w-full max-w-lg border-t border-gray-800" />
