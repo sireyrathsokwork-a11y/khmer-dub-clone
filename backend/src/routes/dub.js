@@ -40,16 +40,20 @@ router.get('/video/:jobId', (req, res) => {
 router.get('/status/:jobId', (req, res) => {
   const jobId = parseInt(req.params.jobId);
 
+  req.socket.setTimeout(0);
+  req.socket.setNoDelay(true);
+  req.socket.setKeepAlive(true);
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // ← this is the key line
   res.flushHeaders();
 
   clients.set(jobId, res);
 
   req.on('close', () => {
     clients.delete(jobId);
-    console.log(`SSE client disconnected: ${jobId}`);
   });
 });
 
