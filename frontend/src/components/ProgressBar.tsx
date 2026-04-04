@@ -1,7 +1,7 @@
 import { type PipelineStatus } from '../types';
 
 interface ProgressBarProps {
-  status: PipelineStatus | null;
+  status: PipelineStatus;
 }
 
 const steps: { key: PipelineStatus; label: string }[] = [

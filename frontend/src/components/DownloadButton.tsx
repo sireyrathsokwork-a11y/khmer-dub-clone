@@ -31,7 +31,7 @@ export default function DownloadButton({
       const contentLength = response.headers.get('Content-Length');
       const total = contentLength ? parseInt(contentLength, 10) : null;
       const reader = response.body!.getReader();
-      const chunks: Uint8Array[] = [];
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
       let received = 0;
 
       while (true) {
