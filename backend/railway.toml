@@ -1,2 +1,2 @@
 [build]
-nixPkgs = ["yt-dlp", "ffmpeg"]
+nixpkgs = ["yt-dlp", "ffmpeg"]
