@@ -1,20 +1,20 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 
 interface VideoEditorProps {
   videoUrl: string;
   duration: number;
 }
 
-export default function VideoEditor({ videoUrl, duration }: VideoEditorProps) {
+export default function VideoEditor({ videoUrl }: VideoEditorProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [startTime, setStartTime] = useState(0);
-  const [endTime, setEndTime] = useState(duration);
+  // const [startTime, setStartTime] = useState(0);
+  // const [endTime, setEndTime] = useState(duration);
 
-  function formatTime(seconds: number) {
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  }
+  // function formatTime(seconds: number) {
+  //   const m = Math.floor(seconds / 60);
+  //   const s = Math.floor(seconds % 60);
+  //   return `${m}:${s.toString().padStart(2, '0')}`;
+  // }
 
   return (
     <section className="flex justify-center mx-auto max-w-3xl px-4 py-10">
