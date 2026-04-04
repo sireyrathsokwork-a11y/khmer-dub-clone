@@ -19,7 +19,7 @@ const TRUST_SIGNALS = [
 ];
 
 const EXAMPLES = [
-  { label: 'Explainer', url: 'https://www.youtube.com/watch?v=8jPQjjsBbIc' },
+  { label: 'Short', url: 'https://www.youtube.com/shorts/5pBGEXszzM8' },
 ];
 
 export default function Hero({ onSubmit, isProcessing }: HeroProps) {
