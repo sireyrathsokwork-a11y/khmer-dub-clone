@@ -1,15 +1,73 @@
 require('dotenv').config();
 const express = require('express');
 const router = express.Router();
-const { exec } = require('child_process');
+const { execFile } = require('child_process'); // NOT exec — never spawns a shell
+const { promisify } = require('util');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { transcribeAudio } = require('../services/transcribe');
 const { translateToKhmer } = require('../services/translate');
 const { textToSpeechKhmer } = require('../services/tts');
 const { mergeAudioWithVideo } = require('../services/merge');
+
+const execFileAsync = promisify(execFile);
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const TEMP_DIR = path.resolve(__dirname, '../../temp');
+const COOKIES_PATH = path.resolve(__dirname, '../../config/cookies.txt');
+const NODE_PATH = 'C:\\Program Files\\nodejs\\node.exe';
+const JOB_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const VALID_YOUTUBE_HOSTS = new Set([
+  'www.youtube.com',
+  'youtube.com',
+  'm.youtube.com',
+  'youtu.be',
+]);
+
+// SSE client registry: jobId → res
 const clients = new Map();
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Validate a YouTube URL using proper URL parsing — not string includes().
+ * Prevents bypass like: http://evil.com/?q=youtube.com
+ */
+function isValidYouTubeUrl(raw) {
+  try {
+    const { hostname } = new URL(raw);
+    return VALID_YOUTUBE_HOSTS.has(hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate a jobId is a real UUIDv4 before using it in paths or Map lookups.
+ * Prevents path traversal via jobId like: ../../etc/passwd
+ */
+function isValidJobId(id) {
+  return typeof id === 'string' && JOB_ID_PATTERN.test(id);
+}
+
+/**
+ * Resolve a filename inside TEMP_DIR and verify it hasn't escaped via traversal.
+ * Always call this before passing any path derived from user input to the FS.
+ */
+function safeTempPath(filename) {
+  const resolved = path.resolve(TEMP_DIR, filename);
+  if (!resolved.startsWith(TEMP_DIR + path.sep)) {
+    throw new Error('Path traversal detected');
+  }
+  return resolved;
+}
+
+/**
+ * Push an SSE event to the client listening on jobId.
+ */
 function sendStatus(jobId, status, data = {}) {
   const client = clients.get(jobId);
   if (client) {
@@ -17,28 +75,70 @@ function sendStatus(jobId, status, data = {}) {
   }
 }
 
+/**
+ * Delete files silently — best-effort, never throws.
+ * Always called in finally blocks so failures don't suppress real errors.
+ */
+function cleanup(...filePaths) {
+  for (const fp of filePaths) {
+    fs.unlink(fp, () => {});
+  }
+}
+
+/**
+ * Run yt-dlp with an explicit args array — execFile never touches a shell,
+ * so user-supplied URLs cannot inject shell commands regardless of content.
+ */
+async function ytDlp(args) {
+  return execFileAsync('yt-dlp', args, {
+    timeout: 120_000, // 2-minute hard cap per download
+    maxBuffer: 10 * 1024 * 1024,
+  });
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
 // GET /api/dub/video/:jobId
 router.get('/video/:jobId', (req, res) => {
-  const jobId = req.params.jobId;
-  const tempDir = path.join(__dirname, '../../temp');
+  const { jobId } = req.params;
 
-  // Find the latest dubbed file for this jobId
-  const files = fs
-    .readdirSync(tempDir)
-    .filter((f) => f.startsWith(`${jobId}_dubbed`) && f.endsWith('.mp4'))
-    .sort()
-    .reverse();
+  if (!isValidJobId(jobId)) {
+    return res.status(400).json({ error: 'Invalid jobId' });
+  }
+
+  let files;
+  try {
+    files = fs
+      .readdirSync(TEMP_DIR)
+      .filter((f) => f.startsWith(`${jobId}_dubbed`) && f.endsWith('.mp4'))
+      .sort()
+      .reverse();
+  } catch (err) {
+    console.error('Failed to read temp dir:', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 
   if (files.length === 0) {
     return res.status(404).json({ error: 'Video not found' });
   }
 
-  res.sendFile(path.join(tempDir, files[0]));
+  let filePath;
+  try {
+    filePath = safeTempPath(files[0]);
+  } catch {
+    return res.status(400).json({ error: 'Invalid file path' });
+  }
+
+  res.sendFile(filePath);
 });
 
-// GET /api/dub/status/:jobId
+// GET /api/dub/status/:jobId  (SSE — long-lived connection)
 router.get('/status/:jobId', (req, res) => {
-  const jobId = parseInt(req.params.jobId);
+  const { jobId } = req.params;
+
+  if (!isValidJobId(jobId)) {
+    return res.status(400).json({ error: 'Invalid jobId' });
+  }
 
   req.socket.setTimeout(0);
   req.socket.setNoDelay(true);
@@ -51,149 +151,182 @@ router.get('/status/:jobId', (req, res) => {
   res.flushHeaders();
 
   clients.set(jobId, res);
-
-  req.on('close', () => {
-    clients.delete(jobId);
-  });
+  req.on('close', () => clients.delete(jobId));
 });
 
+// POST /api/dub/process
 router.post('/process', async (req, res) => {
-  try {
-    const { youtubeUrl } = req.body;
+  const { youtubeUrl, previousJobId } = req.body;
 
-    if (!youtubeUrl) {
-      return res.status(400).json({ error: 'youtubeUrl is required' });
-    }
-
-    const isYouTube =
-      youtubeUrl.includes('youtube.com') || youtubeUrl.includes('youtu.be');
-
-    if (!isYouTube) {
-      return res
-        .status(400)
-        .json({ error: 'URL must be a valid YouTube link' });
-    }
-
-    const jobId = Date.now();
-    const audioPath = path.join(
-      __dirname,
-      '../../temp',
-      `${jobId}_original.mp3`,
-    );
-    const videoPath = path.join(
-      __dirname,
-      '../../temp',
-      `${jobId}_original.mp4`,
-    );
-
-    res.json({ status: 'processing', jobId, message: 'Starting pipeline...' });
-
-    // Step 1a — Download audio for transcription
-    const audioCommand = `yt-dlp -x --audio-format mp3 --js-runtime nodejs -o "${audioPath}" "${youtubeUrl}"`;
-
-    // Step 1b — Download video for merging
-    const videoCommand = `yt-dlp -f "best[ext=mp4]" --js-runtime nodejs -o "${videoPath}" "${youtubeUrl}"`;
-
-    exec(audioCommand, async (error) => {
-      if (error) {
-        console.error('Audio download error:', error.message);
-        sendStatus(jobId, 'error', { message: error.message });
-        return;
-      }
-      sendStatus(jobId, 'transcribing');
-      console.log('Audio downloaded.');
-
-      exec(videoCommand, async (error) => {
-        if (error) {
-          console.error('Video download error:', error.message);
-          sendStatus(jobId, 'error', { message: error.message });
-          return;
-        }
-        console.log('Video downloaded.');
-
-        try {
-          // Step 2 — Transcribe
-          sendStatus(jobId, 'transcribing');
-          const transcription = await transcribeAudio(audioPath);
-          console.log('Transcription complete.');
-
-          // Step 3 — Translate
-          sendStatus(jobId, 'translating');
-          const khmerText = await translateToKhmer(transcription.text);
-          console.log('Translation complete.');
-
-          // Step 4 — TTS
-          sendStatus(jobId, 'generating_audio');
-          const khmerAudioPath = await textToSpeechKhmer(khmerText, jobId);
-          console.log('Khmer audio ready.');
-
-          // Step 5 — Merge
-          sendStatus(jobId, 'merging');
-          const dubbedVideoPath = await mergeAudioWithVideo(
-            videoPath,
-            khmerAudioPath,
-            jobId,
-          );
-          console.log('Merge complete.');
-
-          // // Cleanup
-          fs.unlinkSync(audioPath);
-          // fs.unlinkSync(khmerAudioPath)
-          // fs.unlinkSync(videoPath)
-
-          // Done — send transcript and video path
-          sendStatus(jobId, 'completed', {
-            transcript: {
-              english: transcription.text,
-              khmer: khmerText,
-            },
-            videoPath: dubbedVideoPath,
-          });
-        } catch (err) {
-          console.error('Pipeline error:', err.message);
-          sendStatus(jobId, 'error', { message: err.message });
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  // ── Input validation ──────────────────────────────────────────────────────
+  if (!youtubeUrl || typeof youtubeUrl !== 'string') {
+    return res.status(400).json({ error: 'youtubeUrl is required' });
   }
-});
+  if (!isValidYouTubeUrl(youtubeUrl)) {
+    return res.status(400).json({ error: 'URL must be a valid YouTube link' });
+  }
 
-router.post('/regenerate', async (req, res) => {
-  const { jobId, khmerText } = req.body;
+  // Clean up previous job's files if the client provided a previousJobId.
+  // This is the correct time to delete — the user has moved on to a new URL.
+  if (previousJobId && isValidJobId(previousJobId)) {
+    const prevFiles = [
+      path.join(TEMP_DIR, `${previousJobId}_original.mp3`),
+      path.join(TEMP_DIR, `${previousJobId}_original.mp4`),
+    ];
+    // Also delete any dubbed output files from the previous job
+    try {
+      const dubbed = fs
+        .readdirSync(TEMP_DIR)
+        .filter(
+          (f) => f.startsWith(`${previousJobId}_dubbed`) && f.endsWith('.mp4'),
+        )
+        .map((f) => path.join(TEMP_DIR, f));
+      cleanup(...prevFiles, ...dubbed);
+    } catch {
+      cleanup(...prevFiles); // best-effort even if readdir fails
+    }
+  }
 
+  // crypto.randomUUID() — unforgeable, collision-free, non-guessable
+  const jobId = crypto.randomUUID();
+  const audioPath = path.join(TEMP_DIR, `${jobId}_original.mp3`);
+  const videoPath = path.join(TEMP_DIR, `${jobId}_original.mp4`);
+
+  // Respond immediately so the client can open the SSE channel with the jobId
+  res.json({ status: 'processing', jobId, message: 'Starting pipeline...' });
+
+  // ── Pipeline (async, outside the request/response cycle) ─────────────────
   try {
-    sendStatus(jobId, 'generating_audio');
-    const khmerAudioPath = await textToSpeechKhmer(khmerText, jobId, true);
-    console.log('Khmer audio ready.');
+    sendStatus(jobId, 'downloading', { message: 'Downloading audio...' });
+    await ytDlp([
+      '-x',
+      '--audio-format',
+      'mp3',
+      '--cookies',
+      COOKIES_PATH,
+      '--js-runtimes',
+      `node:${NODE_PATH}`,
+      '--remote-components',
+      'ejs:github',
+      '--socket-timeout',
+      '30',
+      '--retries',
+      '3',
+      '--no-playlist',
+      '-o',
+      audioPath,
+      youtubeUrl,
+    ]);
 
-    sendStatus(jobId, 'merging');
-    const videoPath = path.join(
-      __dirname,
-      '../../temp',
-      `${jobId}_original.mp4`,
-    );
+    sendStatus(jobId, 'downloading', { message: 'Downloading video...' });
+    await ytDlp([
+      '-f',
+      'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+      '--cookies',
+      COOKIES_PATH,
+      '--js-runtimes',
+      `node:${NODE_PATH}`,
+      '--remote-components',
+      'ejs:github',
+      '--socket-timeout',
+      '30',
+      '--retries',
+      '3',
+      '--no-playlist',
+      '--merge-output-format',
+      'mp4',
+      '-o',
+      videoPath,
+      youtubeUrl,
+    ]);
+
+    sendStatus(jobId, 'transcribing', { message: 'Transcribing...' });
+    const transcription = await transcribeAudio(audioPath);
+
+    sendStatus(jobId, 'translating', { message: 'Translating to Khmer...' });
+    const khmerText = await translateToKhmer(transcription.text);
+
+    sendStatus(jobId, 'generating_audio', {
+      message: 'Generating Khmer audio...',
+    });
+    const khmerAudioPath = await textToSpeechKhmer(khmerText, jobId);
+
+    sendStatus(jobId, 'merging', { message: 'Merging audio and video...' });
     const dubbedVideoPath = await mergeAudioWithVideo(
       videoPath,
       khmerAudioPath,
       jobId,
     );
-    console.log('Merge complete.');
 
-    fs.unlinkSync(khmerAudioPath);
+    sendStatus(jobId, 'completed', {
+      transcript: { english: transcription.text, khmer: khmerText },
+      videoPath: dubbedVideoPath,
+    });
+  } catch (err) {
+    console.error(`[job ${jobId}] Pipeline failed:`, err.message);
+    sendStatus(jobId, 'error', { message: err.message });
+  } finally {
+    // Audio is no longer needed after transcription — delete it now.
+    // Video stays alive until the user submits a new URL (cleaned via previousJobId).
+    cleanup(audioPath);
+  }
+});
+
+// POST /api/dub/regenerate
+router.post('/regenerate', async (req, res) => {
+  const { jobId, khmerText } = req.body;
+
+  // ── Input validation ──────────────────────────────────────────────────────
+  if (!isValidJobId(jobId)) {
+    return res.status(400).json({ error: 'Invalid jobId' });
+  }
+  if (
+    !khmerText ||
+    typeof khmerText !== 'string' ||
+    khmerText.trim().length === 0
+  ) {
+    return res.status(400).json({ error: 'khmerText is required' });
+  }
+
+  // Confirm the source video actually exists before starting work
+  const videoPath = path.join(TEMP_DIR, `${jobId}_original.mp4`);
+  if (!fs.existsSync(videoPath)) {
+    return res
+      .status(404)
+      .json({ error: 'Source video not found for this jobId' });
+  }
+
+  // Acknowledge the request — SSE will carry progress from here
+  res.json({ status: 'ok' });
+
+  let khmerAudioPath;
+  try {
+    sendStatus(jobId, 'generating_audio', {
+      message: 'Regenerating Khmer audio...',
+    });
+    khmerAudioPath = await textToSpeechKhmer(khmerText, jobId, true);
+
+    sendStatus(jobId, 'merging', { message: 'Merging...' });
+    const dubbedVideoPath = await mergeAudioWithVideo(
+      videoPath,
+      khmerAudioPath,
+      jobId,
+    );
 
     sendStatus(jobId, 'completed', {
       khmer: khmerText,
       videoPath: dubbedVideoPath,
     });
-
-    res.json({ status: 'ok' });
   } catch (err) {
-    console.error('Pipeline error:', err.message);
+    console.error(`[job ${jobId}] Regenerate failed:`, err.message);
     sendStatus(jobId, 'error', { message: err.message });
-    res.status(500).json({ error: err.message });
+    // Note: res.json() was already sent above — do NOT call res.status(500) here,
+    // headers are gone. SSE 'error' event is the correct channel at this point.
+  } finally {
+    // Only delete the TTS audio — the source video must stay alive for
+    // further regeneration calls. It gets cleaned up when the user
+    // submits a new YouTube URL (via previousJobId in /process).
+    if (khmerAudioPath) cleanup(khmerAudioPath);
   }
 });
 
