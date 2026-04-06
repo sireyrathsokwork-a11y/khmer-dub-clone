@@ -1,12 +1,10 @@
 FROM node:18-alpine
 
-# Install system dependencies: ffmpeg (via apk) and yt-dlp (via pip)
-# Symlink the node binary into /usr/bin so yt-dlp can discover it as a
-# JS runtime regardless of how PATH is set in child processes.
-RUN apk add --no-cache ffmpeg python3 py3-pip \
-    && pip3 install --no-cache-dir --break-system-packages yt-dlp \
-    && ln -sf /usr/local/bin/node /usr/bin/node \
-    && ln -sf /usr/local/bin/node /usr/bin/nodejs
+# Install system dependencies: ffmpeg, python3, nodejs (via apk) and yt-dlp (via pip).
+# Installing nodejs via apk places the binary in standard system locations
+# (e.g. /usr/bin/node) that yt-dlp can reliably discover as a JS runtime.
+RUN apk add --no-cache ffmpeg python3 py3-pip nodejs \
+    && pip3 install --no-cache-dir --break-system-packages yt-dlp
 
 WORKDIR /app
 
