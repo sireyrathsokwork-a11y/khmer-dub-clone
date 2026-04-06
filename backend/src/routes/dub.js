@@ -89,10 +89,10 @@ router.post('/process', async (req, res) => {
     res.json({ status: 'processing', jobId, message: 'Starting pipeline...' });
 
     // Step 1a — Download audio for transcription
-    const audioCommand = `yt-dlp -x --audio-format mp3 --js-runtime nodejs -o "${audioPath}" "${youtubeUrl}"`;
+    const audioCommand = `yt-dlp -x --audio-format mp3 --js-runtime node -o "${audioPath}" "${youtubeUrl}"`;
 
     // Step 1b — Download video for merging
-    const videoCommand = `yt-dlp -f "best[ext=mp4]" --js-runtime nodejs -o "${videoPath}" "${youtubeUrl}"`;
+    const videoCommand = `yt-dlp -f "best[ext=mp4]" --js-runtime node -o "${videoPath}" "${youtubeUrl}"`;
 
     exec(audioCommand, async (error) => {
       if (error) {
