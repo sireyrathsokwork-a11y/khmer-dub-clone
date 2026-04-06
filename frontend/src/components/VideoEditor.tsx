@@ -24,7 +24,7 @@ export default function VideoEditor({ videoUrl }: VideoEditorProps) {
           ref={videoRef}
           src={videoUrl}
           controls
-          className="max-w-xl  rounded-lg border border-gray-800 bg-black"
+          className="max-w-sm  rounded-lg border border-gray-800 bg-black"
         />
 
         {/* // TODO  */}
