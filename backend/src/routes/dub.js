@@ -89,12 +89,13 @@ router.post('/process', async (req, res) => {
     res.json({ status: 'processing', jobId, message: 'Starting pipeline...' });
 
     // Step 1a — Download audio for transcription
-    const audioCommand = `yt-dlp -x --audio-format mp3 --js-runtime node --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" --socket-timeout 30 --retries 3 --sleep-requests 2 -o "${audioPath}" "${youtubeUrl}"`;
+    const audioCommand = `yt-dlp -x --audio-format mp3 --js-runtime node --remote-components ejs:github --extractor-args "youtube:player_client=web_embedded" --user-agent \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\" --socket-timeout 30 --retries 3 --sleep-requests 2 -o \"${audioPath}\" \"${youtubeUrl}\"`;
 
     // Step 1b — Download video for merging
-    const videoCommand = `yt-dlp -f "best[ext=mp4]" --js-runtime node --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" --socket-timeout 30 --retries 3 --sleep-requests 2 -o "${videoPath}" "${youtubeUrl}"`;
+    const videoCommand = `yt-dlp -f \"best[ext=mp4]\" --js-runtime node --remote-components ejs:github --extractor-args "youtube:player_client=web_embedded" --user-agent \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\" --socket-timeout 30 --retries 3 --sleep-requests 2 -o \"${videoPath}\" \"${youtubeUrl}\"`;
 
     exec(audioCommand, async (error) => {
+
       if (error) {
         console.error('Audio download error:', error.message);
         sendStatus(jobId, 'error', { message: error.message });
