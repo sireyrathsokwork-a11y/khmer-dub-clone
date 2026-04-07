@@ -16,7 +16,8 @@ const execFileAsync = promisify(execFile);
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEMP_DIR = path.resolve(__dirname, '../../temp');
-const NODE_PATH = process.env.YTDLP_NODE_PATH || process.execPath;
+const NODE_PATH = process.env.YTDLP_NODE_PATH || '';
+const YTDLP_JS_RUNTIME = process.env.YTDLP_JS_RUNTIME || 'node';
 const COOKIES_PATH = process.env.YTDLP_COOKIES_PATH
   ? path.resolve(process.env.YTDLP_COOKIES_PATH)
   : path.resolve(__dirname, '../../config/cookies.txt');
@@ -113,7 +114,14 @@ function getYtDlpBaseArgs() {
 
   // EJS helps with YouTube bot-challenges on newer yt-dlp flows.
   if (NODE_PATH) {
-    args.push('--js-runtimes', `node:${NODE_PATH}`, '--remote-components', 'ejs:github');
+    args.push(
+      '--js-runtimes',
+      `${YTDLP_JS_RUNTIME}:${NODE_PATH}`,
+      '--remote-components',
+      'ejs:github',
+    );
+  } else {
+    args.push('--js-runtimes', YTDLP_JS_RUNTIME, '--remote-components', 'ejs:github');
   }
 
   // Cookies are optional for local/dev runs. Avoid write-back failures.
