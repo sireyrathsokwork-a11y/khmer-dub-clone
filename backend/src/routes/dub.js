@@ -17,6 +17,7 @@ const execFileAsync = promisify(execFile);
 
 const TEMP_DIR = path.resolve(__dirname, '../../temp');
 const NODE_PATH = '/usr/bin/node';
+const COOKIES_PATH = '/config/cookies.txt';
 const JOB_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VALID_YOUTUBE_HOSTS = new Set([
@@ -209,6 +210,8 @@ router.post('/process', async (req, res) => {
       'youtube:player_client=web',
       '--user-agent',
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      '--cookies',
+      COOKIES_PATH,
       '--socket-timeout',
       '30',
       '--retries',
@@ -231,6 +234,8 @@ router.post('/process', async (req, res) => {
       'youtube:player_client=web',
       '--user-agent',
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      '--cookies',
+      COOKIES_PATH,
       '--socket-timeout',
       '30',
       '--retries',
