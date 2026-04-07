@@ -16,8 +16,12 @@ const execFileAsync = promisify(execFile);
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEMP_DIR = path.resolve(__dirname, '../../temp');
-const NODE_PATH = '/usr/bin/node';
-const COOKIES_PATH = '/config/cookies.txt';
+const NODE_PATH = process.env.YTDLP_NODE_PATH || process.execPath;
+const COOKIES_PATH = process.env.YTDLP_COOKIES_PATH
+  ? path.resolve(process.env.YTDLP_COOKIES_PATH)
+  : path.resolve(__dirname, '../../config/cookies.txt');
+const YT_DLP_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 const JOB_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VALID_YOUTUBE_HOSTS = new Set([
@@ -94,6 +98,30 @@ async function ytDlp(args) {
     timeout: 120_000, // 2-minute hard cap per download
     maxBuffer: 10 * 1024 * 1024,
   });
+}
+
+function getYtDlpBaseArgs() {
+  const args = [
+    '--user-agent',
+    YT_DLP_USER_AGENT,
+    '--socket-timeout',
+    '30',
+    '--retries',
+    '3',
+    '--no-playlist',
+  ];
+
+  // EJS helps with YouTube bot-challenges on newer yt-dlp flows.
+  if (NODE_PATH) {
+    args.push('--js-runtimes', `node:${NODE_PATH}`, '--remote-components', 'ejs:github');
+  }
+
+  // Cookies are optional for local/dev runs. Avoid write-back failures.
+  if (fs.existsSync(COOKIES_PATH)) {
+    args.push('--cookies', COOKIES_PATH);
+  }
+
+  return args;
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -202,22 +230,7 @@ router.post('/process', async (req, res) => {
       '-x',
       '--audio-format',
       'mp3',
-      '--js-runtimes',
-      `node:${NODE_PATH}`,
-      '--remote-components',
-      'ejs:github',
-      '--extractor-args',
-      'youtube:player_client=web',
-      '--user-agent',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-      '--cookies',
-      COOKIES_PATH,
-      // '--no-cookies-update',
-      '--socket-timeout',
-      '30',
-      '--retries',
-      '3',
-      '--no-playlist',
+      ...getYtDlpBaseArgs(),
       '-o',
       audioPath,
       youtubeUrl,
@@ -227,22 +240,7 @@ router.post('/process', async (req, res) => {
     await ytDlp([
       '-f',
       'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-      '--js-runtimes',
-      `node:${NODE_PATH}`,
-      '--remote-components',
-      'ejs:github',
-      '--extractor-args',
-      'youtube:player_client=web',
-      '--user-agent',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-      '--cookies',
-      COOKIES_PATH,
-      // '--no-cookies-update',
-      '--socket-timeout',
-      '30',
-      '--retries',
-      '3',
-      '--no-playlist',
+      ...getYtDlpBaseArgs(),
       '--merge-output-format',
       'mp4',
       '-o',
