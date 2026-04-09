@@ -338,7 +338,7 @@ router.post('/regenerate', async (req, res) => {
     sendStatus(jobId, 'error', { message: err.message });
     // Note: res.json() was already sent above — do NOT call res.status(500) here,
     // headers are gone. SSE 'error' event is the correct channel at this point.
-  } finally {
+  } finally {   
     // Only delete the TTS audio — the source video must stay alive for
     // further regeneration calls. It gets cleaned up when the user
     // submits a new YouTube URL (via previousJobId in /process).

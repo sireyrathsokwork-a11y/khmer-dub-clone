@@ -33,7 +33,7 @@ export default function Hero({ onSubmit, isProcessing }: HeroProps) {
   };
 
   return (
-    <section className="flex flex-col items-center px-4 py-14 text-center">
+    <section className="flex flex-col items-center px-4 pt-14 text-center">
       {/* Badge */}
       <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-4 py-1 text-xs font-medium text-teal-400">
         <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
