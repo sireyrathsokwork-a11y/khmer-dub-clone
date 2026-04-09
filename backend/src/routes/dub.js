@@ -121,7 +121,12 @@ function getYtDlpBaseArgs() {
       'ejs:github',
     );
   } else {
-    args.push('--js-runtimes', YTDLP_JS_RUNTIME, '--remote-components', 'ejs:github');
+    args.push(
+      '--js-runtimes',
+      YTDLP_JS_RUNTIME,
+      '--remote-components',
+      'ejs:github',
+    );
   }
 
   // Cookies are optional for local/dev runs. Avoid write-back failures.
@@ -244,7 +249,6 @@ router.post('/process', async (req, res) => {
       youtubeUrl,
     ]);
 
-    sendStatus(jobId, 'downloading', { message: 'Downloading video...' });
     await ytDlp([
       '-f',
       'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
@@ -255,6 +259,8 @@ router.post('/process', async (req, res) => {
       videoPath,
       youtubeUrl,
     ]);
+
+    sendStatus(jobId, 'downloading', { message: 'Downloading video...' });
 
     sendStatus(jobId, 'transcribing', { message: 'Transcribing...' });
     const transcription = await transcribeAudio(audioPath);
@@ -338,7 +344,7 @@ router.post('/regenerate', async (req, res) => {
     sendStatus(jobId, 'error', { message: err.message });
     // Note: res.json() was already sent above — do NOT call res.status(500) here,
     // headers are gone. SSE 'error' event is the correct channel at this point.
-  } finally {   
+  } finally {
     // Only delete the TTS audio — the source video must stay alive for
     // further regeneration calls. It gets cleaned up when the user
     // submits a new YouTube URL (via previousJobId in /process).
