@@ -18,20 +18,28 @@ export default function TranscriptEditor({
       <h2 className="mb-6 text-xl font-semibold text-white">Script Editor</h2>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="mb-2 block text-sm text-gray-400">
+          <label
+            htmlFor="textarea-en"
+            className="mb-2 block text-sm text-gray-400"
+          >
             Original (English)
           </label>
           <textarea
+            id="textarea-en"
             value={transcript.english}
             readOnly
             className="h-48 w-full rounded-lg border border-gray-700 bg-gray-900 p-4 text-sm text-gray-300 outline-none resize-none"
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm text-gray-400">
+          <label
+            htmlFor="textarea-kh"
+            className="mb-2 block text-sm text-gray-400"
+          >
             Khmer Translation
           </label>
           <textarea
+            id="textarea-kh"
             value={transcript.khmer}
             onChange={(e) => onKhmerChange(e.target.value)}
             className="h-48 w-full rounded-lg border border-gray-700 bg-gray-900 p-4 text-sm text-white outline-none resize-none focus:border-teal-500"
