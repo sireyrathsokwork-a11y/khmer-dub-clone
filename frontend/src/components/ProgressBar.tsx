@@ -50,7 +50,7 @@ export default function ProgressBar({ status }: ProgressBarProps) {
               {/* Node + label grouped as one centered row */}
               <div className="flex items-center gap-3">
                 {isActive ? (
-                  <SpinnerNode index={index} />
+                  <SpinnerNode index={-1} />
                 ) : (
                   <div
                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-medium transition-all
